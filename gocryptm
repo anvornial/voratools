@@ -1,0 +1,548 @@
+#!/bin/bash
+
+# gocryptm by anvornial
+# mount manager for gocryptfs that store mountpoint and its key via libsecret
+# it also provide automount for selected mount point.
+# For usage information, just invoke the script without parameter.
+# Depedency : make sure you have gocryptfs and secret-tool installed and default keyring is unlocked
+
+# gocryptfs is FUSE based, encrypted overlay file system implemented using golang
+# for more information : https://github.com/rfjakob/gocryptfs
+
+# script name
+NAME="gocryptm"
+VERSION="0.1"
+
+# attribute and label used in keyring
+secret_header="\[/org/freedesktop/secrets*\]"
+gocryptm_label="gocryptm"
+gocryptm_tag="gocryptm 1"
+gcpath_attr="gcpath"
+gcpath_prefix="attribute.$gcpath_attr = "
+mpath_attr="mpath"
+mpath_prefix="attribute.$mpath_attr = "
+mount_attr="mount"
+mount_prefix="attribute.$mount_attr = "
+passw_prefix="secret = "
+
+# program path
+secret_tool="secret-tool"
+gocrypt="gocryptfs"
+
+function echoerror {
+    echo "$@" 1>&2
+}
+
+function _show_help {
+    echo "gocryptm $VERSION "
+    echo "gocryptfs mount manager that uses libsecret (secret-tool) to store password, gocryptfs path and mountpoint"
+    echo "make sure there is unlocked default keyring before using this program"
+    echo ""
+    echo "usage :"
+    echo " $0 [command] (paramater)"
+    echo ""
+    echo "command :"
+    echo -e " add\t\t[optional -ignore / -create] [gocryptfs path] [mountpoint path] [optional manual/auto mount] [optional password]"
+    echo -e " remove\t\t[gocryptfs path]"
+    echo -e " auto\t\t[gocryptfs path(s)]"
+    echo -e " manual\t\t[gocryptfs path(s)]"
+    echo -e " list\t\t[optional gocryptfs path(s)]"
+    echo -e " mount\t\t[optional gocryptfs path(s)]"
+    echo -e " unmount\t[optional -all / optional gocryptfs path(s)]"
+    echo -e " help"
+}
+
+
+# param [gcpath]
+function _do_delete_mount {
+    local gcpath=$(realpath "$1")
+    
+    $secret_tool lookup $gocryptm_tag $gcpath_attr "$gcpath" > /dev/null
+    if [[ $? != 0 ]]
+    then
+        echo "ERROR gocryptfs path not exist in keyring"
+        return 1
+    fi
+
+    $secret_tool clear $gocryptm_tag $gcpath_attr "$gcpath"
+    if [[ $? == 0 ]]
+    then
+        sleep 0.5
+        return 0
+    else    
+        return 1
+    fi
+}
+
+# param [gcpath] [mpath]
+# return 0, mounted accordingly
+# return 1, mounted by other user and/or other fs type
+# return 2, mpath mounted on other fs and/or other gcpath
+# return 3, gcpath mounted to other mpath
+# return 4, not mounted
+function _is_mounted {
+    # check if mount point already mounted
+    mount | grep "$1 on $2 type fuse.gocryptfs" | grep "user_id=$(id -u)" | grep "group_id=$(id -g)" > /dev/null
+    if [[ $? == 0 ]]
+    then
+        return 0
+    else
+        # mounted by different type
+        mount | grep "$1 on $2 type " > /dev/null
+        if [[ $? == 0 ]]
+        then
+            return 1
+        else
+            # mpath mounted on different gcpath
+            mount | grep " on $2 type " > /dev/null
+            if [[ $? == 0 ]]
+            then
+                return 2
+            else
+                # gcpath mounted to other mpath
+                mount | grep "$1 on " > /dev/null
+                if [[ $? == 0 ]]
+                then
+                    return 3
+                else
+                    return 4
+                fi    
+            fi
+        fi
+    fi
+}
+
+# param [gcpath] [mpath] [passw]
+function _do_mount {
+    _is_mounted "$1" "$2"
+    local retmounted=$?
+
+    echo -n "Mounting $1 ... "
+
+    # already mounted accordingly
+    if [[ $retmounted == 0 ]]
+    then
+        echo "Already Mounted"
+        return
+    fi
+
+    # not mounted
+    if [[ $retmounted == 4 ]]
+    then
+        if [ ! -d "$mpath" ] || [ "$(ls -A $mpath 2> /dev/null)" ]
+        then
+            echo "ERROR invalid mountpoint directory or directory is not empty"
+        else
+            printf "$3" | $gocrypt -q $gcpath $mpath
+            if [[ $? == 0 ]]
+            then
+                echo "OK"
+            else
+                echo "FAILED"
+                echo ""
+            fi
+        fi
+    elif [[ $retmounted == 2 ]]
+    then
+        echo "ERROR $2 is mounted with other filesystem, run mount for details"
+    elif [[ $retmounted == 3 ]]
+    then
+        echo "ERROR already mounted to other directory, run mount for details"
+    else
+        echo "ERROR mounted by other user or invalid gocryptfs directory"
+    fi 
+}
+
+# param [gcpath] [mpath]
+function _do_unmount {
+    _is_mounted "$1" "$2"
+    local retmounted=$?
+
+    echo -n "Unmounting $1 ... "
+
+    # already mounted accordingly
+    if [[ $retmounted == 0 ]]
+    then
+        fusermount -u "$2"
+        if [[ $? == 0 ]]
+        then
+            echo "OK"
+        else
+            echo "FAILED"
+            echo ""
+        fi
+    elif [[ $retmounted != 4 ]]
+    then
+        echo "ERROR not mounted accordingly, please unmount manually"
+    else 
+        echo "Not Mounted"
+    fi
+}
+
+# param <optional param> [gcpath] [mpath] [auto_manual_mount] [pass]
+# return 0 succesfull
+# return 1 failed
+function _add_mount { 
+    if [[ $1 == "-ignore" ]]
+    then
+        local ignore_error="1"
+        shift
+    elif [[ $1 == "-create" ]]
+    then
+        local create_mount="1"
+        shift
+    fi    
+
+    # convert to absolute path
+    local gcpath=$(realpath "$1")
+    local mpath=$(realpath "$2")
+
+    local passw
+
+    if [[ $3 == "auto" ]] || [[ $3 == "manual" ]]
+    then
+        local automount="$3"
+    else
+        local automount="auto"
+    fi
+
+    if [[ $ignore_error == "" ]]
+    then
+        # check if mount point path or gcryptfs path is exist in keyring
+        $secret_tool lookup $gocryptm $gcpath_attr "$gcpath" > /dev/null
+        if [[ $? == 0 ]]
+        then
+            echo "ERROR gocryptfs path is already exist"
+            return 1
+        fi
+        
+        $secret_tool lookup $gocryptm $mpath_attr "$mpath" > /dev/null
+        if [[ $? == 0 ]]
+        then
+            echo "ERROR mount point path is already used"
+            return 1
+        fi
+        
+        # check if gocryptfs path is correct
+        $gocrypt -info "$gcpath" &> /dev/null
+        if [[ $? != 0 ]] 
+        then
+            echo "ERROR invalid gocryptfs path or broken gocryptfs directory"
+            return 1
+        fi
+
+        _is_mounted "$gcpath" "$mpath"
+        local retmounted=$?
+
+        # check if gcpath is clean
+        if [[ $retmounted == 3 ]]
+        then
+            echo "ERROR $gcpath is mounted on other mountpoint, run mount for more information"
+            return 1
+        fi
+
+        # check if mpath is clean
+        if [ -d "$mpath" ]
+        then
+            if [[ $retmounted == 4 ]] && [ "$(ls -A $mpath 2> /dev/null)" ]
+            then
+                echo "ERROR $mpath directory is not empty"
+                return 1
+            elif [[ $retmounted == 2 ]]
+            then
+                echo "ERROR $mpath is mounted with other filesystem, run mount for more information"
+                return 1
+            fi
+        else
+            echo "ERROR $mpath is not exist"
+            return 1
+        fi
+    fi
+
+    label="${gocryptm_label} $gcpath"
+    
+    # is password empty
+    if [[ $4 == "" ]]
+    then
+        while [[ $passw == "" ]]
+        do
+            echo -n "Password : "
+            read -s passw
+            echo ""
+            if [[ $passw == "" ]]
+            then
+                echo "Password cannot be empty !"
+            fi
+        done
+    else
+        passw="$4"
+    fi
+    
+    # add into keyring
+    printf "${passw}" | $secret_tool store --label="$label" $gocryptm_tag $gcpath_attr "$gcpath" $mpath_attr "$mpath" $mount_attr "$automount"
+    if [[ $? == 0 ]]
+    then
+        return 0
+    else    
+        return 1
+    fi
+}   
+
+function _do_list_display {
+    _is_mounted "$gcpath" "$mpath"
+    local retmounted=$?
+
+    echo -en "gocryptfs path\t: $1 "
+    # check if gocryptfs is correct and ok
+    $gocrypt -info "$1" &> /dev/null
+    if [[ $? != 0 ]] 
+    then
+        echo -n "[ERROR invalid gocryptfs directory] "
+    fi
+    if [[ $retmounted == 3 ]]
+    then
+        echo -n "[ERROR mounted to other mountpoint] "
+    fi
+    echo ""
+
+    echo -en "mount path\t: $2 "
+    # check if mount point is ok
+    if [ -d "$mpath" ]
+    then
+        if [[ $retmounted == 4 ]] && [ "$(ls -A $2 2> /dev/null)" ]
+        then
+            echo -n "[ERROR : directory is not empty]"
+        elif [[ $retmounted == 2 ]]
+        then
+            echo -n "[ERROR : mounted with other filesystem]"
+        fi
+    else
+        echo -n "[ERROR directory not exist]"
+    fi
+    echo ""
+
+    echo -e "automount\t: $3"
+
+    if [[ $retmounted == 0 ]]
+    then
+        echo -e "mount status\t: MOUNTED"
+    elif [[ $retmounted == 4 ]]
+    then
+        echo -e "mount status\t: NOT MOUNTED"
+    else
+        echo -e "mount status\t: ERROR"
+    fi    
+}
+
+# param [whattodo] [param]
+function _do_list_mount {
+    local list=$($secret_tool search --all $gocryptm_tag 2>&1)
+    local gcpath
+    local mpath
+    local automount
+    local passw
+
+    local detect_ok
+    printf "$list\n" | while IFS= read -r linevar
+    do
+        # detect key header
+        if [[ "$linevar" == $secret_header ]]
+        then
+            # clear all entry 
+            gcpath=""
+            mpath=""
+            automount=""
+            passw=""
+            detect_ok=""
+        fi
+
+        if [[ $detect_ok == "" ]]
+        then
+            if [[ "$linevar" == $gcpath_prefix* ]]
+            then
+                gcpath=${linevar#"$gcpath_prefix"}
+            fi
+
+            if [[ "$linevar" == $mpath_prefix* ]]
+            then
+                mpath=${linevar#"$mpath_prefix"}
+            fi
+
+            if [[ "$linevar" == $mount_prefix* ]]
+            then
+                automount=${linevar#"$mount_prefix"}
+            fi
+
+            if [[ "$linevar" == $passw_prefix* ]]
+            then
+                passw=${linevar#"$passw_prefix"}
+            fi
+
+            if [[ $gcpath != "" ]] && [[ $mpath != "" ]] && [[ $automount != "" ]] && [[ $passw != "" ]]
+            then
+                # new entry detected
+                detect_ok="1"
+                
+                # we want to display
+                if [[ "$1" == "list" ]]
+                then                    
+                    if [[ "$(realpath $2 2> /dev/null)" == "$gcpath" ]]
+                    then
+                        _do_list_display "$gcpath" "$mpath" "$automount"
+                        echo ""
+                        
+                        shift
+                        if [[ "$2" == "" ]]
+                        then
+                            return
+                        fi
+                    elif [[ "$2" == "" ]]
+                    then
+                        _do_list_display "$gcpath" "$mpath" "$automount"
+                        echo ""
+                    fi
+                fi
+                
+                # we want to mount
+                if [[ "$1" == "mount" ]]
+                then
+                    if [[ "$(realpath $2 2> /dev/null)" == "$gcpath" ]]
+                    then
+                        _do_mount "$gcpath" "$mpath" "$passw"
+                        shift
+                        
+                        if [[ "$2" == "" ]]
+                        then
+                            return
+                        fi
+                        
+                    elif [[ "$2" == "" ]] && [[ $automount == "auto" ]]
+                    then
+                        _do_mount "$gcpath" "$mpath" "$passw"
+                    fi
+                    
+                fi
+                
+                # we want to unmount 
+                if [[ "$1" == "unmount" ]]
+                then
+                    if [[ "$(realpath $2 2> /dev/null)" == "-all" ]]
+                    then
+                        local unmount_all="1"
+                    fi
+                    
+                    if [[ "$2" == $gcpath ]]
+                    then
+                        _do_unmount "$gcpath" "$mpath"
+                        shift
+                        if [[ "$2" == "" ]]
+                        then
+                            return
+                        fi
+                    elif [[ "$2" == "" ]] && [[ $automount == "auto" ]] || [[ unmount_all != "" ]]
+                    then
+                        _do_unmount "$gcpath" "$mpath"
+                    fi
+                fi
+
+                # edit into auto or manual
+                if [[ "$1" == "manual" ]] || [[ "$1" == "auto" ]]
+                then
+                    if [[ "$(realpath $2 2> /dev/null)" == $gcpath ]]
+                    then
+                        _do_delete_mount "$2"
+                        local delret=$?
+                        if [[ $delret == 0 ]]
+                        then
+                            _add_mount "-ignore" "$gcpath" "$mpath" "$1" "$passw"
+                            local addret=$?
+                        fi
+
+                        if [[ $delret == 0 ]] && [[ $addret == 0 ]]
+                        then
+                            echo "$2 Change to $1"
+                        else
+                            echo "$2 Change Failed"
+                        fi
+                        
+                        shift
+                        
+                        if [[ "$2" == "" ]]
+                        then
+                            return
+                        fi
+                    fi
+                fi
+
+            fi
+        fi
+    done
+}
+
+if [[ $1 == "help" ]]
+then
+    _show_help
+    exit
+fi
+
+if [[ $1 == "add" ]]
+then
+    shift
+    _add_mount "$@"
+
+    if [[ $? == 0 ]] 
+    then
+        echo "Add OK"
+    else
+        echo "Add FAILED"
+    fi
+    exit
+fi
+
+if [[ $1 == "remove" ]]
+then
+    _do_delete_mount "$2"
+    if [[ $? == 0 ]] 
+    then
+        echo "Remove OK"
+    else
+        echo "Remove FAILED"
+    fi
+    exit
+fi
+
+if [[ $1 == "auto" ]]
+then
+    _do_list_mount "auto" "$2"
+    exit
+fi
+
+if [[ $1 == "manual" ]]
+then
+    _do_list_mount "manual" "$2"
+    exit
+fi
+
+if [[ $1 == "list" ]]
+then
+    _do_list_mount "list" "$2"
+    exit
+fi
+
+if [[ $1 == "mount" ]]
+then
+    _do_list_mount "mount" "$2"
+    exit
+fi
+
+if [[ $1 == "unmount" ]]
+then
+    _do_list_mount "unmount" "$2"
+    exit
+fi
+
+_show_help
+
+
+
+

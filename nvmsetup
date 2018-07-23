@@ -48,7 +48,6 @@ unset _PREV_WD
 unset -f _get_nvm_dir
 
 # run external command
-if [[ $1 != "" ]]
-then
+if [ "$1" != "" ]; then
     eval $1
 fi

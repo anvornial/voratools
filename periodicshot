@@ -1,5 +1,6 @@
 #!/bin/bash
 
+# periodicshot by anvornial
 # take screenshot of x desktop periodically using scrot and automatically delete old images
 # dependency : scrot, md5sum, find
 
