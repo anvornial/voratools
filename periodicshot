@@ -3,22 +3,53 @@
 # take screenshot of x desktop periodically using scrot and automatically delete old images
 # dependency : scrot, md5sum, find
 
-renice -n 19 $$
+renice -n 19 $$ &> /dev/null
 
-LOCATION="this should be picture path"
+function _display_help {
+    echo ""
+    echo "periodicshot"
+    echo "  take screenshot of X desktop periodically using scrot and automatically delete old images"
+    echo ""
+    echo "usage : "
+    echo "  $0 [save location]"
+}
+
+if [[ $1 == "" ]]
+then
+    _display_help
+    exit
+fi
+
+if [[ -d "$1" ]]
+then
+    LOCATION=$(realpath "$1")
+else   
+    echo "Invalid save location $1"
+    _display_help
+fi
+
 RANGE="5-45"
 LIVE=10
-CLEANDURATION=43200 # in seconds, half day
+CLEANDURATION=43200 # in seconds, half a day
 CLEANTIMERMARK=$SECONDS
+TMPDIR=$(mktemp -d /tmp/outputpshot.XXXXXXXXXX)
 
-clean_image(){
-    echo "doing periodic cleanup"
-    if [ -d $LOCATION ] 
+if [[ ! -d "$TMPDIR" ]]
+then
+    echo "cannot create temp directory"
+    exit 1
+fi
+
+function _clean_image {
+    if [[ -d "$LOCATION" ]]
     then
-        cd $LOCATION
-        echo "cleaning old images"
-        #find . -type f -mtime +${LIVE} -delete
-        find . -type f -mtime +${LIVE} -exec rm -v {} +
+        cd "$LOCATION"
+        if [[ "$(pwd)" == "$LOCATION" ]]
+        then
+            echo "cleaning old images"
+            #find . -type f -mtime +${LIVE} -delete
+            find . -name "pshot*.jpg" -type f -mtime +${LIVE} -exec rm -v {} +
+        fi
     fi
 }
 
@@ -27,29 +58,32 @@ do
     # do some cleanup
     if [ "$(expr $SECONDS - $CLEANTIMERMARK)" -ge "0" ]
     then
-        clean_image
-        echo "next clean approx at $(date -d +${CLEANDURATION}seconds)"
+        _clean_image
+        echo "next clean up approx at $(date -d +${CLEANDURATION}seconds)"
         CLEANTIMERMARK=$(expr $SECONDS + $CLEANDURATION)
     fi
 
-    #scrot -d $DELAY -m -z -q 20 '%Y-%m-%d-%H_%M_%S.jpg'
-    cd /tmp
-    CUR_FILE=($(scrot -m -z -q 20 '%Y-%m-%d-%H_%M_%S.jpg' -e 'md5sum $f'))
+    cd "$TMPDIR"
     
-    if [ "${CUR_FILE[0]}" = "$PREV_HASH" ]
+    CUR_FILE=($(scrot -m -z -q 20 'pshot%Y-%m-%d-%H_%M_%S.jpg' -e 'md5sum $f'))
+    
+    # reimplement using tee
+    if [[ "${CUR_FILE[0]}" == "$PREV_HASH" ]]
     then
         rm "${CUR_FILE[1]}"
         echo "Same file detected, deleting"
     else
-        mkdir -p $LOCATION
-        cd $LOCATION
-        mv "/tmp/${CUR_FILE[1]}" .
-        echo "periodicshot saved to ${CUR_FILE[1]}"
+        if [[ -d "$LOCATION" ]]
+        then
+            cp -v "${CUR_FILE[1]}" "$LOCATION"
+            rm -v "${CUR_FILE[1]}"
+            echo "screenshot saved to ${CUR_FILE[1]}"
+        fi
     fi
     
     PREV_HASH=${CUR_FILE[0]}
 
     DELAY=$(shuf -i $RANGE -n 1)    
-    echo "next shot in $DELAY seconds"
+    echo "next screenshot in $DELAY seconds"
     sleep $DELAY
 done
