@@ -1,0 +1,54 @@
+#!/bin/bash
+
+# prepare a very localized nvm and node enviroment to current directory
+# just source this script to use it, for example :
+# . ./prepare_nvm /home/karen/mynvm
+# or with source command :
+# source /some/dir/prepare_nvm
+# make sure your *nix enviroment have c++ compiler like build-essential in ubuntu and base-devel in arch linux
+
+# note : this script is a stub, copy and modify it on your own project directory
+
+_PREV_WD="$(pwd)"
+
+# snippet to get script directory and set NVM_DIR
+_get_nvm_dir(){
+ local SOURCE="${BASH_SOURCE[0]}"
+ while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+  local DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink fi$
+ done
+ DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
+
+ export NVM_DIR="$DIR/nvm"
+}
+
+_get_nvm_dir
+export npm_config_userconfig="$NVM_DIR/npmrc_user"
+
+if [ ! -d "$NVM_DIR" ]; then
+  # install and prepare nvm
+  git clone https://github.com/creationix/nvm.git "$NVM_DIR"
+  cd "$NVM_DIR"
+  git checkout `git describe --abbrev=0 --tags --match "v[0-9]*" origin`
+  [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" # This loads nvm
+  # install node
+  nvm install node
+  # prepare npm configuration
+  npm config set cache "$NVM_DIR/npm_cache_user"
+else
+  # nvm is installed, just sourced it
+  [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" # This loads nvm
+fi
+
+cd "$_PREV_WD"
+
+unset _PREV_WD
+unset -f _get_nvm_dir
+
+# run external command
+if [[ $1 != "" ]]
+then
+    eval $1
+fi

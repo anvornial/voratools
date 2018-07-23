@@ -1,0 +1,2 @@
+#!/bin/bash
+xsel -b -o | qrencode -s 10 -o - | display

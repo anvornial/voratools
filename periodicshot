@@ -1,0 +1,55 @@
+#!/bin/bash
+
+# take screenshot of x desktop periodically using scrot and automatically delete old images
+# dependency : scrot, md5sum, find
+
+renice -n 19 $$
+
+LOCATION="this should be picture path"
+RANGE="5-45"
+LIVE=10
+CLEANDURATION=43200 # in seconds, half day
+CLEANTIMERMARK=$SECONDS
+
+clean_image(){
+    echo "doing periodic cleanup"
+    if [ -d $LOCATION ] 
+    then
+        cd $LOCATION
+        echo "cleaning old images"
+        #find . -type f -mtime +${LIVE} -delete
+        find . -type f -mtime +${LIVE} -exec rm -v {} +
+    fi
+}
+
+while :
+do
+    # do some cleanup
+    if [ "$(expr $SECONDS - $CLEANTIMERMARK)" -ge "0" ]
+    then
+        clean_image
+        echo "next clean approx at $(date -d +${CLEANDURATION}seconds)"
+        CLEANTIMERMARK=$(expr $SECONDS + $CLEANDURATION)
+    fi
+
+    #scrot -d $DELAY -m -z -q 20 '%Y-%m-%d-%H_%M_%S.jpg'
+    cd /tmp
+    CUR_FILE=($(scrot -m -z -q 20 '%Y-%m-%d-%H_%M_%S.jpg' -e 'md5sum $f'))
+    
+    if [ "${CUR_FILE[0]}" = "$PREV_HASH" ]
+    then
+        rm "${CUR_FILE[1]}"
+        echo "Same file detected, deleting"
+    else
+        mkdir -p $LOCATION
+        cd $LOCATION
+        mv "/tmp/${CUR_FILE[1]}" .
+        echo "periodicshot saved to ${CUR_FILE[1]}"
+    fi
+    
+    PREV_HASH=${CUR_FILE[0]}
+
+    DELAY=$(shuf -i $RANGE -n 1)    
+    echo "next shot in $DELAY seconds"
+    sleep $DELAY
+done

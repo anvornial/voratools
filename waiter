@@ -1,0 +1,78 @@
+#!/usr/bin/env python2
+
+# a simple blocking script with dbus remote control
+# use case : when you need a block mechanism for your script
+
+# this script will block when running and can be stop remotely using dbus call at org.vora.waiterservice.[waiter_id].Stop
+# or run this script again with command stop.
+# Each waiter instances can be differentiated with its own waiter_id
+
+# usage :
+# waiter [waiter_id]
+# waiter [waiter_id] [stop,msg] [msg]
+
+
+import dbus
+import dbus.service
+import dbus.mainloop.glib
+import gobject
+import sys
+
+if __name__ == "__main__" :
+    if len(sys.argv) >= 2:
+        waiterid = sys.argv[1]
+        # service name
+        service_name = "org.vora.waiterservice" + "." + waiterid
+        service_path = "/org/vora/waiterservice/" + waiterid
+        # service method
+        service_stop = service_name + ".Stop"
+        service_msg = service_name + ".Message"
+
+
+
+class WaiterService(dbus.service.Object):
+    def run(self):
+        dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+        bus_name = dbus.service.BusName(service_name, dbus.SessionBus())
+        dbus.service.Object.__init__(self, bus_name, service_path)
+        self._loop = gobject.MainLoop()
+        self._loop.run()
+
+    @dbus.service.method(service_stop, in_signature='s', out_signature='')
+    def stop(self,msg):
+        print msg
+        self._loop.quit()
+    
+    @dbus.service.method(service_msg, in_signature='s', out_signature='')
+    def message(self,msg):
+        print msg
+        
+class WaiterControl():
+    def __init__(self):
+        bus = dbus.SessionBus()
+        service = bus.get_object(service_name, service_path)
+        self._stop = service.get_dbus_method('stop', service_stop)
+        self._message = service.get_dbus_method('message', service_msg)
+       
+    def stop(self,msg):
+        self._stop(msg)
+
+    def message(self,msg):
+        self._message(msg)
+
+
+
+if __name__ == "__main__":
+    if len(sys.argv) >= 3:
+        if sys.argv[2] == "stop":
+            if len(sys.argv) >= 4:
+                WaiterControl().stop(sys.argv[3])
+            else:
+                WaiterControl().stop("")
+        elif sys.argv[2] == "msg":
+            if len(sys.argv) >= 4:
+                WaiterControl().message(sys.argv[3])
+    else:
+        WaiterService().run()
+        
+        
