@@ -55,7 +55,7 @@ def mqtt_on_message(mclient, userdata, msg):
     topic = msg.topic
     payload = msg.payload.decode()
 
-    print(str(datetime.now()))
+    print("MESSAGE " + str(datetime.now()))
     print("TOPIC : " + topic)
     print("PAYLOAD [" + str(len(payload)) + "] :")
     print(payload)
@@ -69,7 +69,14 @@ def db_create_table() :
     try:
         db = sqlite3.connect(db_path)
         c = db.cursor()
-        c.execute("CREATE TABLE IF NOT EXISTS subdump (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL DEFAULT CURRENT_TIMESTAMP, broker TEXT NOT NULL, topic TEXT NOT NULL, payload TEXT NOT NULL)")
+        c.execute("CREATE TABLE IF NOT EXISTS subdump \
+                    (   id INTEGER PRIMARY KEY AUTOINCREMENT, \
+                        timestamp INTEGER NOT NULL DEFAULT CURRENT_TIMESTAMP, \
+                        broker TEXT NOT NULL, \
+                        topic TEXT NOT NULL, \
+                        payload TEXT NOT NULL \
+                    ) "
+                )
         db.commit()
         db.close()
         return True
