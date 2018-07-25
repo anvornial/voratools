@@ -65,7 +65,7 @@ def mqtt_on_message(mclient, userdata, msg):
         
 
 def db_create_table() :
-    print("openning database " + db_path)
+    print("opening database " + db_path)
     try:
         db = sqlite3.connect(db_path)
         c = db.cursor()
