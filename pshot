@@ -149,7 +149,7 @@ while :; do
                     $CONVERT "${CUR_FILE[1]}" \
                         -quality $QUALITY \
                         -gravity South -background Gold -splice 0x30 \
-                        -pointsize 20 -gravity SouthWest -annotate 0 "pshot $(whoami)@$(hostname)     $(date)     $(uptime)" \
+                        -pointsize 20 -gravity SouthWest -annotate 0 "pshot $(whoami)@$(hostname)    $(date '+%A %B %d %Y %z') $(uptime)" \
                         "$SAVEPATH"
                 else
                     SAVEPATH="$LOCATION/${CUR_FILE[1]}"
