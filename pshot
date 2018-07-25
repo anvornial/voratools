@@ -1,0 +1,169 @@
+#!/bin/bash
+
+# pshot by anvornial
+# take screenshot of x desktop periodically using scrot and automatically delete old images
+# dependency : scrot, md5sum, find, shuf
+
+function _display_help {
+    echo ""
+    echo "pshot"
+    echo "  take screenshot of X desktop periodically using scrot and automatically delete old images"
+    echo ""
+    echo "usage : "
+    echo "  $0 [option] [save location]"
+    echo 
+    echo "option :"
+    echo " -q [quality] "
+    echo "  jpeg output quality, value is 1 to 100. Default is 20"
+    echo 
+    echo " -d [range_low-range_high]"
+    echo "  Delay between each screenshot. Using range like 5-45, it means, delay will vary between 5 to 45 seconds."
+    echo "  Fixed delay can be achived with same number in range like 50-50."
+    echo "  Default is 5-45"
+    echo
+    echo " -l [live_days] "
+    echo "  How many days image should be stored (approximately), before it will automatically deleted."
+    echo "  Default is 10 days"
+    echo 
+    echo " -na  "
+    echo "  Forcefully disable annotation bar. By default, each image will contain annotation using"
+    echo "  convert tool from imagemagick if installed."
+    echo
+    echo " -h --help"
+    echo "  Display this help"
+}
+
+
+if [[ $1 == "" || " $@ " == *\ -h\ * || " $@ " == *\ --help\ * ]]; then
+    _display_help
+    exit
+fi
+
+# renice ourself
+renice -n 19 $$ &> /dev/null
+
+# main variable
+RANGE="5-45"
+LIVE=10
+CLEANDURATION=43200 # in seconds, half a day
+CLEANTIMERMARK=$SECONDS
+QUALITY=20
+CONVERT=$(command -v convert)
+TMPDIR=$(mktemp -d /tmp/outputpshot.XXXXXXXXXX)
+if [[ ! -d "$TMPDIR" ]]; then
+    echo "ERROR cannot create temporary directory"
+    exit 1
+fi
+
+# trap function
+function _revert {
+    # clean temp directory
+    if [[ -d "$TMPDIR" ]]; then 
+        rm -rf "$TMPDIR"
+    fi
+    exit
+}
+trap _revert HUP INT TERM EXIT
+
+# begin parsing command
+while [[ $1 == -* ]]; do
+    if [[ $1 == "-q" ]]; then
+        shift
+        if (( $1 >= 5 && $1 <= 100 )); then
+            QUALITY="$1"
+        else
+            echo "ERROR invalid quality value : $1, must be between 5 to 100"
+            exit
+        fi
+    elif [[ $1 == "-d" ]]; then
+        shift
+        RANGE="$1"
+        # test if delay is valid
+        shuf -i $RANGE -n 1 > /dev/null 2>&1
+        if [[ $? != "0" ]]; then
+            echo "ERROR invalid delay range : $1"
+            exit
+        fi
+    elif [[ $1 == "-l" ]]; then
+        shift
+        if (( $1 > 0 )); then
+            LIVE="$1"
+        else
+            echo "ERROR invalid live days : $1"
+            exit
+        fi
+    elif [[ $1 == "-na" ]]; then
+        CONVERT=""
+    elif [[ $1 == "--" ]]; then
+        shift
+        break
+    fi
+    shift
+done
+
+# check location path
+if [[ -d "$1" ]]; then
+    LOCATION=$(realpath "$1")
+else   
+    echo "ERROR invalid save location on '$1'"
+    exit
+fi
+
+function _clean_image {
+    if [[ -d "$LOCATION" ]]; then 
+        cd "$LOCATION" 
+        if [[ "$(pwd)" == "$LOCATION" ]]; then # make sure we are on correct directory ! we will delete bunch of file after all ...
+            echo "cleaning old images"
+            #find . -type f -mtime +${LIVE} -delete
+            find . -name "pshot*.jpg" -type f -mtime +${LIVE} -exec rm -v {} +
+        fi
+    fi
+}
+
+# main script loop
+while :; do
+    # do some cleanup
+    if (( $(expr $SECONDS - $CLEANTIMERMARK) >= 0 )); then
+        _clean_image
+        echo "next clean up approx at $(date -d +${CLEANDURATION}seconds)"
+        CLEANTIMERMARK=$(expr $SECONDS + $CLEANDURATION)
+    fi
+
+    # get screenshot
+    cd "$TMPDIR"
+    if [[ $CONVERT != "" ]]; then
+        CUR_FILE=($(scrot -m -z 'pshot__%Y-%m-%d__%H_%M_%S.png' -e 'md5sum $f'))
+    else
+        CUR_FILE=($(scrot -m -z -q $QUALITY 'pshot__%Y-%m-%d__%H_%M_%S.jpg' -e 'md5sum $f'))
+    fi
+
+    # save screenshot
+    if [[ -f "${CUR_FILE[1]}" ]]; then
+        if [[ "${CUR_FILE[0]}" == "$PREV_HASH" ]]; then   
+                echo "same image detected, not saving"
+                rm "${CUR_FILE[1]}"
+        else
+            if [[ -d "$LOCATION" ]]; then
+                if [[ $CONVERT != "" ]]; then
+                    SAVEPATH="$LOCATION/${CUR_FILE[1]%.*}.jpg"
+                    $CONVERT "${CUR_FILE[1]}" \
+                        -quality $QUALITY \
+                        -gravity South -background Gold -splice 0x30 \
+                        -pointsize 20 -gravity SouthWest -annotate 0 "pshot $(whoami)@$(hostname)     $(date)     $(uptime)" \
+                        "$SAVEPATH"
+                else
+                    SAVEPATH="$LOCATION/${CUR_FILE[1]}"
+                    cp "${CUR_FILE[1]}" "$SAVEPATH"
+                    rm "${CUR_FILE[1]}"
+                fi
+                echo "screenshot saved to $SAVEPATH"
+            fi
+        fi
+    fi
+    PREV_HASH=${CUR_FILE[0]}
+
+    # random delay with range
+    DELAY=$(shuf -i $RANGE -n 1)
+    echo "next screenshot in $DELAY seconds"
+    sleep $DELAY
+done

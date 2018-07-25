@@ -1,7 +1,7 @@
 #!/usr/bin/env python2
 
 # A simple blocking script with dbus remote control
-# use case : when you need a block mechanism for your script
+# use case : when you need a signaling mechanism for your script
 
 # This script will block when running and can be stop remotely using dbus call at org.vora.waiterservice.[waiter_id].Stop
 # or run this script again with command stop.
