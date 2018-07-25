@@ -1,0 +1,107 @@
+#!/usr/bin/env python3
+
+# subdump by anvornial
+# mqtt dump utility
+# require paho-mqtt
+
+import paho.mqtt.client as mqtt
+from time import sleep
+from datetime import datetime
+import sqlite3
+import argparse
+
+############ main parameter ##############
+
+#### database settings
+db_path = "mdump.db"
+db = None
+
+#### MQTT object and variable
+mqtt_host = "localhost"
+mqtt_port = "1883"
+mqtt_topic = "#"
+mqtt_connected = False
+mclient = None
+
+def _parse_args() :
+    global db_path, mqtt_host, mqtt_port, mqtt_topic
+
+    parser = argparse.ArgumentParser(description="MQTT message dump utility, All message is stored in Sqlite3 database.")
+    parser.add_argument("--db", metavar="dp_path", type=str, default="mdump.db",
+                        help="Database file path (default is mdump.db")
+    parser.add_argument("--host", metavar="hostname", type=str, default="localhost",
+                        help="MQTT broker host address (default is localhost")
+    parser.add_argument("--port", metavar="port", type=int, default=1883,
+                        help="MQTT broker host port (default is 1883")
+    parser.add_argument("--topic", metavar="port", type=str, default="#",
+                        help="Topic to subscribe (default is '#'")
+    args = parser.parse_args()
+    db_path = args.db
+    mqtt_host = args.host
+    mqtt_port = args.port
+    mqtt_topic = args.topic
+
+# MQTT callback for when the client receives a CONNACK response from the server.
+def mqtt_on_connect(mclient, userdata, flags, rc):
+    global mqtt_connected, mqtt_topic
+    mqtt_connected = True
+    print("mqtt connected")
+    print()
+    mclient.subscribe(mqtt_topic, qos=1)
+    
+# MQTT callback for when a PUBLISH message is received from the server.
+def mqtt_on_message(mclient, userdata, msg):
+    broker = mqtt_host + ":" + str(mqtt_port)
+    topic = msg.topic
+    payload = msg.payload.decode()
+
+    print(str(datetime.now()))
+    print("TOPIC : " + topic)
+    print("PAYLOAD [" + str(len(payload)) + "] :")
+    print(payload)
+    print()
+
+    db_insert(broker, topic, payload)
+        
+
+def db_create_table() :
+    print("openning database " + db_path)
+    try:
+        db = sqlite3.connect(db_path)
+        c = db.cursor()
+        c.execute("CREATE TABLE IF NOT EXISTS subdump (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp INTEGER NOT NULL DEFAULT CURRENT_TIMESTAMP, broker TEXT NOT NULL, topic TEXT NOT NULL, payload TEXT NOT NULL)")
+        db.commit()
+        db.close()
+        return True
+    except Exception as e:
+        print("ERROR db_create_table",e)
+    return False
+
+
+def db_insert(broker, topic, payload) :
+    try:
+        t = (broker, topic, payload)
+        db = sqlite3.connect(db_path)
+        c = db.cursor()
+        c.execute("INSERT INTO subdump (broker, topic, payload) VALUES (?,?,?)", t)
+        db.commit()
+        db.close()
+        return True
+    except Exception as e:
+        print("ERROR db_insert",e)
+
+if __name__ == "__main__":
+    _parse_args()
+    print("Starting subdump")
+    db_create_table()
+    mclient = mqtt.Client()
+    mclient.on_connect = mqtt_on_connect
+    mclient.on_message = mqtt_on_message
+    print("connecting to " + mqtt_host + ":" + str(mqtt_port))
+    while True :
+        try:
+            mclient.connect(mqtt_host, mqtt_port, keepalive=10)
+            mclient.loop_forever()
+        except Exception as e:
+            print("ERROR main", e)
+            sleep(1)
