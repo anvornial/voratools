@@ -25,12 +25,15 @@ function _display_help {
     echo "  How many days image should be stored (approximately), before it will automatically deleted."
     echo "  Default is 10 days"
     echo 
-    echo " -na  "
-    echo "  Forcefully disable annotation bar. By default, each image will contain annotation using"
+    echo " -n  "
+    echo "  Disable annotation bar. By default, each image will contain annotation using"
     echo "  convert tool from imagemagick if installed."
     echo
     echo " -h --help"
     echo "  Display this help"
+    echo
+    echo " --"
+    echo "  Stop args parsing"
 }
 
 
@@ -92,7 +95,7 @@ while [[ $1 == -* ]]; do
             echo "ERROR invalid live days : $1"
             exit
         fi
-    elif [[ $1 == "-na" ]]; then
+    elif [[ $1 == "-n" ]]; then
         CONVERT=""
     elif [[ $1 == "--" ]]; then
         shift

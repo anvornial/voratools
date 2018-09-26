@@ -1,4 +1,4 @@
 #!/bin/bash
 
-# get current clipboard and display it as qrcode image via imagemagick display
+# get current x window clipboard and display it as qrcode image via imagemagick display
 xsel -b -o | qrencode -s 10 -o - | display
