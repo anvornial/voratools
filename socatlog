@@ -1,0 +1,27 @@
+#!/bin/bash
+
+# Start proxying and logging with socat
+# usage listenport desthost filelog
+
+if [[ $1 == "" ]]; then
+    SCRIPTNAME="$(basename $0)"
+    echo "Start proxying and logging with socat, mainly used for debugging"
+    echo 
+    echo "Usage : "
+    echo "  $SCRIPTNAME [listenport] [desthost] [filelog]"
+    echo "Leave [filelog] empty for auto-generated name in current directory"
+    echo 
+    echo "example :"
+    echo "  $SCRIPTNAME 12000 localhost:4500 log.txt"
+    echo "  $SCRIPTNAME 8080 google.com:80"
+    exit
+fi
+
+LISTENPORT="$1"
+DESTHOST="$2"
+
+if [[ $3 = "" ]]; then 
+  FILENAME="packet_$(date '+%H%M%S_%d_%m_%y').log"
+fi
+
+socat -v -d "TCP-LISTEN:$LISTENPORT,fork" "TCP:$DESTHOST" | tee "$FILENAME" 2>&1
