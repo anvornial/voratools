@@ -27,7 +27,7 @@ function _display_help {
     echo 
     echo " -n  "
     echo "  Disable annotation bar. By default, each image will contain annotation using"
-    echo "  convert tool from imagemagick if installed."
+    echo "  convert tool from imagemagick, if installed."
     echo
     echo " -h --help"
     echo "  Display this help"
