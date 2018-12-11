@@ -11,6 +11,15 @@ fi
 # function to load nvm
 function nvmload {
   if [[ -d $NVM_DIR ]]; then
+    
+    if [[ $NPM_CONFIG_PREFIX != "" ]]; then
+      echo "NPM_CONFIG_PREFIX Environment variable is not empty"
+      echo "It will be unset and copied to _NPM_CONFIG_PREFIX"
+      NPM_CONFIG_PREFIX_OLD=$_NPM_CONFIG_PREFIX
+      export _NPM_CONFIG_PREFIX
+    fi
+    
+    unset NPM_CONFIG_PREFIX
     export NPM_CONFIG_USERCONFIG="$NVM_DIR/npmrc_user"
     export NPM_CONFIG_GLOBALCONFIG="$NVM_DIR/npmrc_global"
 
@@ -27,6 +36,12 @@ function nvmload {
   fi
   echo "Error loading NVM"
   return 1
+}
+
+function nvmunload {
+  nvm unload
+  NPM_CONFIG_PREFIX=$_NPM_CONFIG_PREFIX
+  export NPM_CONFIG_PREFIX
 }
 
 
