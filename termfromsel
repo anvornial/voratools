@@ -43,6 +43,7 @@ function expand_path() {
 DIRPATH=$(expand_path "$(xsel)")
 
 if [[ -d $DIRPATH ]]; then
+  # open terminal using exo-open (xfce)
   exo-open --launch TerminalEmulator --default-working-directory="$DIRPATH"
 else
   zenity --error --text="termformsel - Invalid directory : $DIRPATH" --no-wrap
