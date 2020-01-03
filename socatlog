@@ -22,6 +22,8 @@ DESTHOST="$2"
 
 if [[ $3 = "" ]]; then 
   FILENAME="packet_$(date '+%H%M%S_%d_%m_%y').log"
+else
+  FILENAME="$3"
 fi
 
-socat -v -d "TCP-LISTEN:$LISTENPORT,fork" "TCP:$DESTHOST" | tee "$FILENAME" 2>&1
+socat -v -d "TCP-LISTEN:$LISTENPORT,fork" "TCP:$DESTHOST" 2>&1 | tee "$FILENAME" 2>&1

@@ -2,7 +2,7 @@
 
 # pshot by anvornial
 # take screenshot of x desktop periodically using scrot and automatically delete old images
-# dependency : scrot, md5sum, find, shuf
+# dependency : scrot, md5sum, find, shuf, convert (imagemagick, optional)
 
 function _display_help {
     echo ""
@@ -23,7 +23,7 @@ function _display_help {
     echo
     echo " -l [live_days] "
     echo "  How many days image should be stored (approximately), before it will automatically deleted."
-    echo "  Default is 10 days"
+    echo "  Default is 0, means no deletion"
     echo 
     echo " -n  "
     echo "  Disable annotation bar. By default, each image will contain annotation using"
@@ -47,7 +47,7 @@ renice -n 19 $$ &> /dev/null
 
 # main variable
 RANGE="5-45"
-LIVE=10
+LIVE=0
 CLEANDURATION=43200 # in seconds, half a day
 CLEANTIMERMARK=$SECONDS
 QUALITY=20
@@ -89,7 +89,7 @@ while [[ $1 == -* ]]; do
         fi
     elif [[ $1 == "-l" ]]; then
         shift
-        if (( $1 > 0 )); then
+        if (( $1 >= 0 )); then
             LIVE="$1"
         else
             echo "ERROR invalid live days : $1"
@@ -115,7 +115,9 @@ fi
 function _clean_image {
     if [[ -d "$LOCATION" ]]; then 
         cd "$LOCATION" 
-        if [[ "$(pwd)" == "$LOCATION" ]]; then # make sure we are on correct directory ! we will delete bunch of file after all ...
+        # make sure we are on correct directory ! 
+        # we will delete bunch of file after all ...
+        if [[ "$(pwd)" == "$LOCATION" ]]; then 
             echo "cleaning old images"
             #find . -type f -mtime +${LIVE} -delete
             find . -name "pshot*.jpg" -type f -mtime +${LIVE} -exec rm -v {} +
@@ -126,10 +128,12 @@ function _clean_image {
 # main script loop
 while :; do
     # do some cleanup
-    if (( $(expr $SECONDS - $CLEANTIMERMARK) >= 0 )); then
-        _clean_image
-        echo "next clean up approx at $(date -d +${CLEANDURATION}seconds)"
-        CLEANTIMERMARK=$(expr $SECONDS + $CLEANDURATION)
+    if (( $LIVE > 0 )); then 
+        if (( $(expr $SECONDS - $CLEANTIMERMARK) >= 0 )); then
+            _clean_image
+            echo "next clean up approx at $(date -d +${CLEANDURATION}seconds)"
+            CLEANTIMERMARK=$(expr $SECONDS + $CLEANDURATION)
+        fi
     fi
 
     # get screenshot

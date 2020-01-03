@@ -1,0 +1,22 @@
+#!/bin/bash
+
+# Start proxying and logging with socat
+# usage listenport desthost filelog
+
+if [[ $1 == "" ]]; then
+    SCRIPTNAME="$(basename $0)"
+    echo "Start proxying with socat"
+    echo 
+    echo "Usage : "
+    echo "  $SCRIPTNAME [listenport] [desthost]"
+    echo 
+    echo "example :"
+    echo "  $SCRIPTNAME 12000 localhost:4500"
+    echo "  $SCRIPTNAME 8080 google.com:80"
+    exit
+fi
+
+LISTENPORT="$1"
+DESTHOST="$2"
+
+socat -v -x -d "TCP-LISTEN:$LISTENPORT,fork" "TCP:$DESTHOST"
