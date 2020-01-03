@@ -1,6 +1,7 @@
 # voratools - a script collection
 Collection of script used by me on daily basis and mainly written in bash. 
-Feel free to use it as you wish with your own risk. All Licensed with WTFPL unless noted otherwise in every individual file.
+Feel free to use it as you wish with your own risk. All Licensed with WTFPL,
+unless noted otherwise in every individual file.
 
 ## Several script and its function  :
 
