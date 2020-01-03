@@ -118,9 +118,9 @@ function _clean_image {
         # make sure we are on correct directory ! 
         # we will delete bunch of file after all ...
         if [[ "$(pwd)" == "$LOCATION" ]]; then 
-            echo "cleaning old images"
+            echo "cleaning old images in current directory"
             #find . -type f -mtime +${LIVE} -delete
-            find . -name "pshot*.jpg" -type f -mtime +${LIVE} -exec rm -v {} +
+            find . -name "pshot*.jpg" -maxdepth 1 -type f -mtime +${LIVE} -exec rm -v {} +
         fi
     fi
 }
