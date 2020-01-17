@@ -158,6 +158,7 @@ while :; do
                         -gravity South -background Gold -splice 0x30 \
                         -pointsize 20 -gravity SouthWest -annotate 0 "pshot $(whoami)@$(hostname)    $(date '+%A %B %d %Y %z') $(uptime)" \
                         "$SAVEPATH"
+                    rm "${CUR_FILE[1]}"
                 else
                     SAVEPATH="$LOCATION/${CUR_FILE[1]}"
                     cp "${CUR_FILE[1]}" "$SAVEPATH"
