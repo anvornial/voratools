@@ -6,7 +6,7 @@ unless noted otherwise in every individual file.
 ## Several script and its function  :
 
 * pshot  
-    take screenshot of x desktop periodically using scrot and automatically delete old images.
+    take screenshot of x desktop periodically using scrot.
 
 * gocryptm  
     gocryptfs auto mounter using libsecret to store its mountpoint and key.
