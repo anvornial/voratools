@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # pshot by anvornial
-# take screenshot of x desktop periodically using scrot and automatically delete old images
+# take screenshot of x desktop periodically using scrot
 # dependency : scrot, md5sum, find, shuf, convert (imagemagick, optional)
 
 function _display_help {
     echo ""
     echo "pshot"
-    echo "  take screenshot of X desktop periodically using scrot and automatically delete old images"
+    echo "  take screenshot of X desktop periodically using scrot"
     echo ""
     echo "usage : "
     echo "  $0 [option] [save location]"
@@ -20,14 +20,10 @@ function _display_help {
     echo "  Delay between each screenshot. Using range like 5-45, it means, delay will vary between 5 to 45 seconds."
     echo "  Fixed delay can be achived with same number in range like 50-50."
     echo "  Default is 5-45"
-    echo
-    echo " -l [live_days] "
-    echo "  How many days image should be stored (approximately), before it will automatically deleted."
-    echo "  Default is 0, means no deletion"
     echo 
     echo " -n  "
     echo "  Disable annotation bar. By default, each image will contain annotation using"
-    echo "  convert tool from imagemagick, if installed."
+    echo "  'convert' from imagemagick, if installed."
     echo
     echo " -h --help"
     echo "  Display this help"
@@ -47,9 +43,6 @@ renice -n 19 $$ &> /dev/null
 
 # main variable
 RANGE="5-45"
-LIVE=0
-CLEANDURATION=43200 # in seconds, half a day
-CLEANTIMERMARK=$SECONDS
 QUALITY=20
 CONVERT=$(command -v convert)
 TMPDIR=$(mktemp -d /tmp/outputpshot.XXXXXXXXXX)
@@ -87,14 +80,6 @@ while [[ $1 == -* ]]; do
             echo "ERROR invalid delay range : $1"
             exit
         fi
-    elif [[ $1 == "-l" ]]; then
-        shift
-        if (( $1 >= 0 )); then
-            LIVE="$1"
-        else
-            echo "ERROR invalid live days : $1"
-            exit
-        fi
     elif [[ $1 == "-n" ]]; then
         CONVERT=""
     elif [[ $1 == "--" ]]; then
@@ -112,30 +97,8 @@ else
     exit
 fi
 
-function _clean_image {
-    if [[ -d "$LOCATION" ]]; then 
-        cd "$LOCATION" 
-        # make sure we are on correct directory ! 
-        # we will delete bunch of file after all ...
-        if [[ "$(pwd)" == "$LOCATION" ]]; then 
-            echo "cleaning old images in current directory"
-            #find . -type f -mtime +${LIVE} -delete
-            find . -name "pshot*.jpg" -maxdepth 1 -type f -mtime +${LIVE} -exec rm -v {} +
-        fi
-    fi
-}
-
 # main script loop
 while :; do
-    # do some cleanup
-    if (( $LIVE > 0 )); then 
-        if (( $(expr $SECONDS - $CLEANTIMERMARK) >= 0 )); then
-            _clean_image
-            echo "next clean up approx at $(date -d +${CLEANDURATION}seconds)"
-            CLEANTIMERMARK=$(expr $SECONDS + $CLEANDURATION)
-        fi
-    fi
-
     # get screenshot
     cd "$TMPDIR"
     if [[ $CONVERT != "" ]]; then
@@ -147,24 +110,28 @@ while :; do
     # save screenshot
     if [[ -f "${CUR_FILE[1]}" ]]; then
         if [[ "${CUR_FILE[0]}" == "$PREV_HASH" ]]; then   
-                echo "same image detected, not saving"
-                rm "${CUR_FILE[1]}"
+            echo "same image detected, not saving"
+            rm "${CUR_FILE[1]}"
         else
             if [[ -d "$LOCATION" ]]; then
-                if [[ $CONVERT != "" ]]; then
-                    SAVEPATH="$LOCATION/${CUR_FILE[1]%.*}.jpg"
-                    $CONVERT "${CUR_FILE[1]}" \
-                        -quality $QUALITY \
-                        -gravity South -background Gold -splice 0x30 \
-                        -pointsize 20 -gravity SouthWest -annotate 0 "pshot $(whoami)@$(hostname)    $(date '+%A %B %d %Y %z') $(uptime)" \
-                        "$SAVEPATH"
-                    rm "${CUR_FILE[1]}"
-                else
-                    SAVEPATH="$LOCATION/${CUR_FILE[1]}"
-                    cp "${CUR_FILE[1]}" "$SAVEPATH"
-                    rm "${CUR_FILE[1]}"
+                LOCATION_WITH_DATE="$LOCATION/$(date '+%Y')/$(date '+%Y-%m-%d')"
+                [[ ! -d "$LOCATION_WITH_DATE" ]] && mkdir -p "$LOCATION_WITH_DATE"
+                if [[ -d "$LOCATION_WITH_DATE" ]]; then
+                    if [[ $CONVERT != "" ]]; then
+                        SAVEPATH="$LOCATION_WITH_DATE/${CUR_FILE[1]%.*}.jpg"
+                        $CONVERT "${CUR_FILE[1]}" \
+                            -quality $QUALITY \
+                            -gravity South -background Gold -splice 0x30 \
+                            -pointsize 20 -gravity SouthWest -annotate 0 "pshot $(whoami)@$(hostname)    $(date '+%A %B %d %Y %z') $(uptime)" \
+                            "$SAVEPATH"
+                        rm "${CUR_FILE[1]}"
+                    else
+                        SAVEPATH="$LOCATION_WITH_DATE/${CUR_FILE[1]}"
+                        cp "${CUR_FILE[1]}" "$SAVEPATH"
+                        rm "${CUR_FILE[1]}"
+                    fi
+                    echo "screenshot saved to $SAVEPATH"
                 fi
-                echo "screenshot saved to $SAVEPATH"
             fi
         fi
     fi
